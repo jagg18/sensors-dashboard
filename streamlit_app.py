@@ -73,33 +73,33 @@ min_date, max_date = st.slider(
     max_value=max_date,
     value=[min_date, max_date])
 
-# countries = gdp_df['Country Code'].unique()
+rooms = sensor_df['Room'].unique()
 
 # if not len(countries):
 #     st.warning("Select at least one country")
 
-# selected_countries = st.multiselect(
-#     'Which countries would you like to view?',
-#     countries,
-#     ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
+selected_rooms = st.multiselect(
+    'Select rooms',
+    rooms,
+    ['Room 1305', 'Room 1401', 'Room 2208'])
 
 ''
 ''
 ''
 
 # Filter the data
-# filtered_gdp_df = gdp_df[
-#     (gdp_df['Country Code'].isin(selected_countries))
-#     & (gdp_df['Year'] <= to_year)
-#     & (from_year <= gdp_df['Year'])
-# ]
+filtered_sensor_df = sensor_df[
+    (sensor_df['Room'].isin(selected_rooms))
+    & (sensor_df['Date'] <= max_date)
+    & (min_date <= sensor_df['Date'])
+]
 
 st.header('Temperature (degC) over time', divider='gray')
 
 ''
 
 st.line_chart(
-    sensor_df,
+    filtered_sensor_df,
     x='Date',
     y='Temperature (degC)',
     color='Room',
@@ -113,7 +113,7 @@ st.header('Humidity (rh%) over time', divider='gray')
 ''
 
 st.line_chart(
-    sensor_df,
+    filtered_sensor_df,
     x='Date',
     y='Humidity (rh%)',
     color='Room',
