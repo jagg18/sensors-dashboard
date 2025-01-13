@@ -1,4 +1,4 @@
-# 🤖: Sensors dashboard template
+# 🤖 Sensors dashboard template
 
 A simple Streamlit app showing sensor data for Temperature and Humidity.
 
