@@ -5,147 +5,147 @@ from pathlib import Path
 
 # Set the title and favicon that appear in the Browser's tab bar.
 st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
+    page_title='Sensor dashboard',
+    page_icon=':robot:',
 )
 
 # -----------------------------------------------------------------------------
 # Declare some useful functions.
 
 @st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
+def get_sensor_data():
+    """Grab sensor data from a CSV file.
 
     This uses caching to avoid having to read the file every time. If we were
     reading from an HTTP endpoint instead of a file, it's a good idea to set
     a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
     """
+    DATA_ROOM_1 = Path(__file__).parent/'data/Room_1305-Aug.csv'
+    raw_sensor_df1 = pd.read_csv(DATA_ROOM_1)
+    raw_sensor_df1['Room'] = 'Room 1305'
 
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
+    DATA_ROOM_2 = Path(__file__).parent/'data/Room_1401-Aug.csv'
+    raw_sensor_df2 = pd.read_csv(DATA_ROOM_2)
+    raw_sensor_df2['Room'] = 'Room 1401'
 
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
+    DATA_ROOM_3 = Path(__file__).parent/'data/Room_2208-Aug.csv'
+    raw_sensor_df3 = pd.read_csv(DATA_ROOM_3)
+    raw_sensor_df3['Room'] = 'Room 2208'
 
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
-        'Year',
-        'GDP',
-    )
+    sensor_df = pd.concat([raw_sensor_df1, raw_sensor_df2, raw_sensor_df3])
 
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
+    # Ensure timestamps are in datetime format
+    sensor_df['timestamp'] = pd.to_datetime(sensor_df['DateTime'])
+    sensor_df = sensor_df.groupby([
+                    pd.Grouper(key='Room'),
+                    pd.Grouper(key='timestamp', axis=0, freq='1D', sort=True),
+                ]).mean(numeric_only=True)
 
-    return gdp_df
+    sensor_df = sensor_df.reset_index()
 
-gdp_df = get_gdp_data()
+    # Add a 'Date' column
+    sensor_df['Date'] = sensor_df['timestamp'].map(lambda x: x.date())
+
+    # sensor_df
+
+    return sensor_df
+
+sensor_df = get_sensor_data()
 
 # -----------------------------------------------------------------------------
 # Draw the actual page
 
 # Set the title that appears at the top of the page.
 '''
-# :earth_americas: GDP dashboard
-
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
+# :robot_face: Sensors dashboard
 '''
 
 # Add some spacing
 ''
 ''
 
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
+min_date = sensor_df['Date'].min()
+max_date = sensor_df['Date'].max()
 
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
+min_date, max_date = st.slider(
+    'Select range',
+    min_value=min_date,
+    max_value=max_date,
+    value=[min_date, max_date])
 
-countries = gdp_df['Country Code'].unique()
+# countries = gdp_df['Country Code'].unique()
 
-if not len(countries):
-    st.warning("Select at least one country")
+# if not len(countries):
+#     st.warning("Select at least one country")
 
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
+# selected_countries = st.multiselect(
+#     'Which countries would you like to view?',
+#     countries,
+#     ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
 
 ''
 ''
 ''
 
 # Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
-]
+# filtered_gdp_df = gdp_df[
+#     (gdp_df['Country Code'].isin(selected_countries))
+#     & (gdp_df['Year'] <= to_year)
+#     & (from_year <= gdp_df['Year'])
+# ]
 
-st.header('GDP over time', divider='gray')
+st.header('Temperature (degC) over time', divider='gray')
 
 ''
 
 st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
+    sensor_df,
+    x='Date',
+    y='Temperature (degC)',
+    color='Room',
 )
 
 ''
 ''
 
-
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
-
-st.header(f'GDP in {to_year}', divider='gray')
+st.header('Humidity (rh%) over time', divider='gray')
 
 ''
 
-cols = st.columns(4)
+st.line_chart(
+    sensor_df,
+    x='Date',
+    y='Humidity (rh%)',
+    color='Room',
+)
 
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
 
-    with col:
-        first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
+# first_year = gdp_df[gdp_df['Year'] == from_year]
+# last_year = gdp_df[gdp_df['Year'] == to_year]
 
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
-        else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
+# st.header(f'GDP in {to_year}', divider='gray')
 
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
-        )
+# ''
+
+# cols = st.columns(4)
+
+# for i, country in enumerate(selected_countries):
+#     col = cols[i % len(cols)]
+
+#     with col:
+#         first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
+#         last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
+
+#         if math.isnan(first_gdp):
+#             growth = 'n/a'
+#             delta_color = 'off'
+#         else:
+#             growth = f'{last_gdp / first_gdp:,.2f}x'
+#             delta_color = 'normal'
+
+#         st.metric(
+#             label=f'{country} GDP',
+#             value=f'{last_gdp:,.0f}B',
+#             delta=growth,
+#             delta_color=delta_color
+#         )
