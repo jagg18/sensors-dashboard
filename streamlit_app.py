@@ -23,10 +23,18 @@ def process_uploaded_files(file_room_pairs):
             try:
                 # Read and process the CSV file
                 df = pd.read_csv(file_obj,
-                                 names=['date', 'temperature_degc', 'humidity_rh'],
-                                 header=0)
+                                #  names=['date', 'temperature_degc', 'humidity_rh'],
+                                 )
+                
+                # Rename the first column to 'date'
+                df.rename(columns={df.columns[0]: 'date'}, inplace=True)
+
+                # Convert the 'date' column to datetime
                 df['date'] = pd.to_datetime(df['date'])
-                df['room'] = room_name
+
+                # Insert 'room' as the second column
+                df.insert(1, 'room', room_name)
+
                 df = df.groupby(['room', pd.Grouper(key='date', freq='1D')]).mean().reset_index()
                 df['date'] = df['date'].map(lambda x: x.date())
 
@@ -43,12 +51,12 @@ uploaded_files = st.file_uploader("Upload Sensor Files", type=['csv'], accept_mu
 # Display uploaded files and room name inputs
 if uploaded_files:
     for uploaded_file in uploaded_files:
-        col1, col2, col3 = st.columns(3)
+        col1, col2, _ = st.columns(3)
         with col1:
             # Room name input
-            room_name = st.text_input(f'Room Name for {uploaded_file.name}', key=f"room_{uploaded_file.name}")
-        # with col2:
-        #     st.text(uploaded_file.name)
+            room_name = st.text_input(f'Room Name:', key=f"room_{uploaded_file.name}")
+        with col2:
+            st.text(uploaded_file.name)
         
         # Store file and room name in session state
         st.session_state.file_room_pairs[uploaded_file.name] = (uploaded_file, room_name)
@@ -65,7 +73,41 @@ if st.button("Process Files"):
 sensor_df = st.session_state.sensor_df
 
 # Visualization
+
+# Function to render a chart
+def render_chart(data, y_field, title, divider, date_range):
+    st.header(title, divider=divider)
+    interval = alt.selection_interval(encodings=['x'], value={'x': date_range})
+    selection = alt.selection_point(fields=['room'], bind='legend')
+    highlight = alt.selection_point(
+        on="pointerover", fields=['date'], nearest=True, clear="pointerout"
+    )
+
+    base = alt.Chart(data, width=600, height=200).mark_line().encode(
+        x='date:T',
+        y=f'{y_field}:Q',
+        color='room',
+        opacity=alt.condition(selection, alt.value(1), alt.value(0.2)),
+    ).add_params(selection)
+
+    upper = base.encode(
+        alt.X('date:T').scale(domain=interval),
+        alt.Y(f'{y_field}:Q').scale(zero=False),
+    )
+
+    circle = upper.mark_circle().encode(
+        size=alt.condition(highlight, alt.value(100), alt.value(0), empty=False)
+    ).add_params(highlight)
+
+    view = base.encode(
+        alt.Y(f'{y_field}:Q').scale(zero=False),
+    ).properties(height=60).add_params(interval)
+
+    st.altair_chart((upper + circle) & view, use_container_width=True)
+
 if not sensor_df.empty:
+    st.dataframe(sensor_df)
+
     min_date = sensor_df['date'].min()
     max_date = sensor_df['date'].max()
 
@@ -88,59 +130,54 @@ if not sensor_df.empty:
         (sensor_df['date'] <= max_date)
     ]
 
-    # Charts
-    st.header('Temperature (degC) over time', divider='gray')
-    
     # Interval Default Range
     start_date = max_date - \
         pd.offsets.DateOffset(months=1)
     date_range = (start_date.date(), max_date)
 
-    # Params
-    interval = alt.selection_interval(encodings=['x'],
-                                value={'x': date_range})
-    selection = alt.selection_point(fields=['room'], bind='legend')
-    highlight = alt.selection_point(
-        on="pointerover", fields=['date'], nearest=True, clear="pointerout"
-    )
+    ''
 
-    base = alt.Chart(filtered_sensor_df, width=600, height=200) \
-            .mark_line().encode(
-                x='date:T',
-                y='temperature_degc:Q',
-                color='room',
-                opacity=alt.when(selection).then(alt.value(1)).otherwise(alt.value(0.2)),
-            ).add_params(selection)
-    upper = base.encode(
-        alt.X('date:T').scale(domain=interval),
-        alt.Y("temperature_degc:Q").scale(zero=False),
-    )
+    # Params selection
+    params = sensor_df.columns.unique()
+    selected_params = st.multiselect('Select Parameters', params[2:], default=[params[2], params[3]])
 
-    circle = upper.mark_circle().encode(
-        size=alt.condition(highlight, alt.value(100), alt.value(0), empty=False)
-    ).add_params(highlight)
+    for param in selected_params:
+        render_chart(filtered_sensor_df, param, f"{param} over time", divider="gray", date_range=date_range)
 
-    view = base.encode(
-        alt.Y("temperature_degc:Q").scale(zero=False),
-    ).properties(height=60).add_params(interval)
+    # Initial Charts
+    # render_chart(filtered_sensor_df, "Temperature (degC)", "Temperature (degC) over time", divider="gray", date_range=date_range)
+    # render_chart(filtered_sensor_df, "Humidity (rh%)", "Humidity (rh%) over time", divider="gray", date_range=date_range)
 
-    (upper + circle) & view
+def get_max_param(group, param):
+    return group.loc[group[param].idxmax()]
 
-    # Humidity
-    st.header('Humidity (rh%) over time', divider='gray')
-    (upper.encode(alt.Y("humidity_rh:Q").scale(zero=False)) + \
-    circle.encode(alt.Y("humidity_rh:Q").scale(zero=False))) & \
-    view.encode(alt.Y("humidity_rh:Q").scale(zero=False))
+def get_min_param(group, param):
+    return group.loc[group[param].idxmin()]
 
+max_temperatures = sensor_df.groupby('room').apply(lambda df: get_max_param(df, 'Temperature (degC)'))
+min_temperatures = sensor_df.groupby('room').apply(lambda df: get_min_param(df, 'Temperature (degC)'))
+# st.write(max_temperatures)
+# st.dataframe(max_temperatures[['room','date','Temperature (degC)']])
 
-# first_year = gdp_df[gdp_df['Year'] == from_year]
-# last_year = gdp_df[gdp_df['Year'] == to_year]
-
-# st.header(f'GDP in {to_year}', divider='gray')
-
-# ''
-
-# cols = st.columns(4)
+st.header(f'All-Time High - Temperature (degC)', divider='gray')
+cols = st.columns(len(max_temperatures))
+for i, col in enumerate(cols):
+    with col:
+        st.metric(
+            max_temperatures.iloc[i]['room'],
+            f'{round(max_temperatures.iloc[i]['Temperature (degC)'], 2)} C',
+            delta=None, delta_color="normal", label_visibility="visible", border=True)
+        st.text(max_temperatures.iloc[i]['date'])
+        
+st.header(f'All-Time Low - Temperature (degC)', divider='gray')
+cols = st.columns(len(min_temperatures))
+for i, col in enumerate(cols):
+    with col:
+        st.metric(
+            label=min_temperatures.iloc[i]['room'],
+            value=f'{round(min_temperatures.iloc[i]['Temperature (degC)'], 2)} C',
+            delta=None, delta_color="normal", label_visibility="visible", border=True)
+        st.text(min_temperatures.iloc[i]['date'])
 
 # for i, country in enumerate(selected_countries):
 #     col = cols[i % len(cols)]
