@@ -80,6 +80,11 @@ sensor_df = st.session_state.sensor_df
 
 # Function to render a chart
 def render_chart(data, y_field, title, divider, date_range):
+    # Remove rows with null values
+    df_non_null = data.dropna(subset=[y_field])
+
+    df_non_null[['room', 'date', y_field]]
+
     st.header(title, divider=divider)
     interval = alt.selection_interval(encodings=['x'], value={'x': date_range})
     selection = alt.selection_point(fields=['room'], bind='legend')
@@ -87,7 +92,7 @@ def render_chart(data, y_field, title, divider, date_range):
         on="pointerover", fields=['date'], nearest=True, clear="pointerout"
     )
 
-    base = alt.Chart(data, width=600, height=200).mark_line().encode(
+    base = alt.Chart(df_non_null, width=600, height=200).mark_line().encode(
         x='date:T',
         y=f'{y_field}:Q',
         color='room',
