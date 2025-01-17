@@ -9,6 +9,10 @@ import altair as alt
 # Set the page configuration
 st.set_page_config(page_title='Sensor Dashboard', page_icon=':robot:')
 
+'''
+# :robot_face: Sensor Dashboard
+'''
+
 # Initialize session state for uploaded files and processed data
 if 'file_room_pairs' not in st.session_state:
     st.session_state.file_room_pairs = {}
@@ -46,7 +50,7 @@ def process_uploaded_files(file_room_pairs):
     return pd.concat(combined_data, ignore_index=True) if combined_data else pd.DataFrame()
 
 # File uploader
-uploaded_files = st.file_uploader("Upload Sensor Files", type=['csv'], accept_multiple_files=True)
+uploaded_files = st.file_uploader("Upload sensor files", type=['csv'], accept_multiple_files=True)
 
 # Display uploaded files and room name inputs
 if uploaded_files:
@@ -148,54 +152,37 @@ if not sensor_df.empty:
     # render_chart(filtered_sensor_df, "Temperature (degC)", "Temperature (degC) over time", divider="gray", date_range=date_range)
     # render_chart(filtered_sensor_df, "Humidity (rh%)", "Humidity (rh%) over time", divider="gray", date_range=date_range)
 
-def get_max_param(group, param):
-    return group.loc[group[param].idxmax()]
 
-def get_min_param(group, param):
-    return group.loc[group[param].idxmin()]
+    # Metrics
 
-max_temperatures = sensor_df.groupby('room').apply(lambda df: get_max_param(df, 'Temperature (degC)'))
-min_temperatures = sensor_df.groupby('room').apply(lambda df: get_min_param(df, 'Temperature (degC)'))
-# st.write(max_temperatures)
-# st.dataframe(max_temperatures[['room','date','Temperature (degC)']])
+    def get_max_param(group, param):
+        return group.loc[group[param].idxmax()]
 
-st.header(f'All-Time High - Temperature (degC)', divider='gray')
-cols = st.columns(len(max_temperatures))
-for i, col in enumerate(cols):
-    with col:
-        st.metric(
-            max_temperatures.iloc[i]['room'],
-            f'{round(max_temperatures.iloc[i]['Temperature (degC)'], 2)} C',
-            delta=None, delta_color="normal", label_visibility="visible", border=True)
-        st.text(max_temperatures.iloc[i]['date'])
-        
-st.header(f'All-Time Low - Temperature (degC)', divider='gray')
-cols = st.columns(len(min_temperatures))
-for i, col in enumerate(cols):
-    with col:
-        st.metric(
-            label=min_temperatures.iloc[i]['room'],
-            value=f'{round(min_temperatures.iloc[i]['Temperature (degC)'], 2)} C',
-            delta=None, delta_color="normal", label_visibility="visible", border=True)
-        st.text(min_temperatures.iloc[i]['date'])
+    def get_min_param(group, param):
+        return group.loc[group[param].idxmin()]
 
-# for i, country in enumerate(selected_countries):
-#     col = cols[i % len(cols)]
+    if not sensor_df.empty:
+        max_temperatures = sensor_df.groupby('room').apply(lambda df: get_max_param(df, 'Temperature (degC)'))
+        min_temperatures = sensor_df.groupby('room').apply(lambda df: get_min_param(df, 'Temperature (degC)'))
+        # st.write(max_temperatures)
+        # st.dataframe(max_temperatures[['room','date','Temperature (degC)']])
 
-#     with col:
-#         first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-#         last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-
-#         if math.isnan(first_gdp):
-#             growth = 'n/a'
-#             delta_color = 'off'
-#         else:
-#             growth = f'{last_gdp / first_gdp:,.2f}x'
-#             delta_color = 'normal'
-
-#         st.metric(
-#             label=f'{country} GDP',
-#             value=f'{last_gdp:,.0f}B',
-#             delta=growth,
-#             delta_color=delta_color
-#         )
+        st.header(f'All-Time High - Temperature (degC)', divider='gray')
+        cols = st.columns(len(max_temperatures))
+        for i, col in enumerate(cols):
+            with col:
+                st.metric(
+                    label=max_temperatures.iloc[i]['room'],
+                    value=f"{round(max_temperatures.iloc[i]['Temperature (degC)'], 2)} C",
+                    delta=None, delta_color="normal", label_visibility="visible", border=True)
+                st.text(max_temperatures.iloc[i]['date'])
+                
+        st.header(f'All-Time Low - Temperature (degC)', divider='gray')
+        cols = st.columns(len(min_temperatures))
+        for i, col in enumerate(cols):
+            with col:
+                st.metric(
+                    label=min_temperatures.iloc[i]['room'],
+                    value=f"{round(min_temperatures.iloc[i]['Temperature (degC)'], 2)} C",
+                    delta=None, delta_color="normal", label_visibility="visible", border=True)
+                st.text(min_temperatures.iloc[i]['date'])
