@@ -3,6 +3,7 @@ import pandas as pd
 import datetime as dt
 import math
 from pathlib import Path
+import re
 
 import altair as alt
 
@@ -29,6 +30,15 @@ def process_uploaded_files(file_room_pairs):
                 df = pd.read_csv(file_obj,
                                 #  names=['date', 'temperature_degc', 'humidity_rh'],
                                  )
+                
+                # Function to clean column names
+                def clean_column_name(column_name):
+                    # Remove "Room", "room", and trailing numbers, and clean up extra spaces
+                    cleaned_name = re.sub(r'\b[Rr]oom\s*\d*\b', '', column_name)
+                    return re.sub(r'\s+', ' ', cleaned_name).strip()
+
+                # Apply the function to all column names
+                df.columns = [clean_column_name(col) for col in df.columns]
                 
                 # Rename the first column to 'date'
                 df.rename(columns={df.columns[0]: 'date'}, inplace=True)
@@ -148,6 +158,7 @@ if not sensor_df.empty:
 
     # Params selection
     params = sensor_df.columns.unique()
+
     selected_params = st.multiselect('Select Parameters', params[2:], default=[params[2], params[3]])
 
     for param in selected_params:
