@@ -60,41 +60,57 @@ def process_uploaded_files(file_room_pairs):
     return pd.concat(combined_data, ignore_index=True) if combined_data else pd.DataFrame()
 
 # File uploader
-uploaded_files = st.file_uploader("Upload sensor files", type=['csv'], accept_multiple_files=True)
+with st.sidebar:
+    with st.expander("File upload", expanded=True):
+        uploaded_files = st.file_uploader("Upload sensor files", type=['csv'], accept_multiple_files=True)
 
-# Display uploaded files and room name inputs
-if uploaded_files:
-    for uploaded_file in uploaded_files:
-        col1, col2, _ = st.columns(3)
-        with col1:
-            # Room name input
-            room_name = st.text_input(f'Room Name:', key=f"room_{uploaded_file.name}")
-        with col2:
-            st.text(uploaded_file.name)
-        
-        # Store file and room name in session state
-        st.session_state.file_room_pairs[uploaded_file.name] = (uploaded_file, room_name)
+        # Display uploaded files and room name inputs
+        if uploaded_files:
+            for uploaded_file in uploaded_files:
+                col1, col2, _ = st.columns(3)
+                with col1:
+                    # Room name input
+                    room_name = st.text_input(f'Room Name:', key=f"room_{uploaded_file.name}")
+                with col2:
+                    st.text(uploaded_file.name)
+                
+                # Store file and room name in session state
+                st.session_state.file_room_pairs[uploaded_file.name] = (uploaded_file, room_name)
 
-# Process files if a button is clicked
-if st.button("Process Files"):
-    st.session_state.sensor_df = process_uploaded_files(st.session_state.file_room_pairs)
-    if not st.session_state.sensor_df.empty:
-        st.success("Files processed successfully!")
-    else:
-        st.warning("No valid data was processed.")
+        # Process files if a button is clicked
+        if st.button("Process Files"):
+            st.session_state.sensor_df = process_uploaded_files(st.session_state.file_room_pairs)
+            if not st.session_state.sensor_df.empty:
+                st.success("Files processed successfully!")
+            else:
+                st.warning("No valid data was processed.")
 
 # Use the processed DataFrame for visualization
 sensor_df = st.session_state.sensor_df
 
 # Visualization
 
+# Utility functions
+
+def get_max_param(group, param):
+    return group.loc[group[param].idxmax()]
+
+def get_min_param(group, param):
+    return group.loc[group[param].idxmin()]
+
+def render_metrics(param, vals, header_string):
+    st.header(header_string, divider='gray')
+    cols = st.columns(len(vals))
+    for i, col in enumerate(cols):
+        with col:
+            st.metric(
+                label=vals.iloc[i]['room'],
+                value=f"{round(vals.iloc[i][param], 2)}",
+                delta=None, delta_color="normal", label_visibility="visible", border=True)
+            st.text(vals.iloc[i]['date'])
+
 # Function to render a chart
-def render_chart(data, y_field, title, divider, date_range):
-    # Remove rows with null values
-    df_non_null = data.dropna(subset=[y_field])
-
-    df_non_null[['room', 'date', y_field]]
-
+def render_chart(y_field, title, divider, date_range):
     st.header(title, divider=divider)
     interval = alt.selection_interval(encodings=['x'], value={'x': date_range})
     selection = alt.selection_point(fields=['room'], bind='legend')
@@ -125,22 +141,24 @@ def render_chart(data, y_field, title, divider, date_range):
     st.altair_chart((upper + circle) & view, use_container_width=True)
 
 if not sensor_df.empty:
-    st.dataframe(sensor_df)
+    # st.dataframe(sensor_df)
 
     min_date = sensor_df['date'].min()
     max_date = sensor_df['date'].max()
 
     # Date slider
-    min_date, max_date = st.slider(
-        'Select Date Range',
-        min_value=min_date,
-        max_value=max_date,
-        value=(min_date, max_date)
-    )
+    with st.sidebar:
+        min_date, max_date = st.slider(
+            'Select Date Range',
+            min_value=min_date,
+            max_value=max_date,
+            value=(min_date, max_date)
+        )
 
     # Room selection
     rooms = sensor_df['room'].unique()
-    selected_rooms = st.multiselect('Select Rooms', rooms, default=rooms)
+    with st.sidebar:
+        selected_rooms = st.multiselect('Select Rooms', rooms, default=rooms)
 
     # Filter data based on selections
     filtered_sensor_df = sensor_df[
@@ -159,46 +177,23 @@ if not sensor_df.empty:
     # Params selection
     params = sensor_df.columns.unique()
 
-    selected_params = st.multiselect('Select Parameters', params[2:], default=[params[2], params[3]])
+    with st.sidebar:
+        selected_params = st.multiselect('Select Parameters', params[2:], default=[params[2], params[3]])
 
     for param in selected_params:
-        render_chart(filtered_sensor_df, param, f"{param} over time", divider="gray", date_range=date_range)
+        # Remove rows with null values
+        df_non_null = filtered_sensor_df.dropna(subset=[param])
 
-    # Initial Charts
-    # render_chart(filtered_sensor_df, "Temperature (degC)", "Temperature (degC) over time", divider="gray", date_range=date_range)
-    # render_chart(filtered_sensor_df, "Humidity (rh%)", "Humidity (rh%) over time", divider="gray", date_range=date_range)
+        render_chart(param, f"{param} over time", divider="gray", date_range=date_range)
 
+        # Metrics
 
-    # Metrics
+        max_temperatures = df_non_null.groupby('room').apply(lambda df: get_max_param(df, param))
+        min_temperatures = df_non_null.groupby('room').apply(lambda df: get_min_param(df, param))
 
-    def get_max_param(group, param):
-        return group.loc[group[param].idxmax()]
-
-    def get_min_param(group, param):
-        return group.loc[group[param].idxmin()]
-
-    if not sensor_df.empty:
-        max_temperatures = sensor_df.groupby('room').apply(lambda df: get_max_param(df, 'Temperature (degC)'))
-        min_temperatures = sensor_df.groupby('room').apply(lambda df: get_min_param(df, 'Temperature (degC)'))
-        # st.write(max_temperatures)
-        # st.dataframe(max_temperatures[['room','date','Temperature (degC)']])
-
-        st.header(f'All-Time High - Temperature (degC)', divider='gray')
-        cols = st.columns(len(max_temperatures))
-        for i, col in enumerate(cols):
-            with col:
-                st.metric(
-                    label=max_temperatures.iloc[i]['room'],
-                    value=f"{round(max_temperatures.iloc[i]['Temperature (degC)'], 2)} C",
-                    delta=None, delta_color="normal", label_visibility="visible", border=True)
-                st.text(max_temperatures.iloc[i]['date'])
-                
-        st.header(f'All-Time Low - Temperature (degC)', divider='gray')
-        cols = st.columns(len(min_temperatures))
-        for i, col in enumerate(cols):
-            with col:
-                st.metric(
-                    label=min_temperatures.iloc[i]['room'],
-                    value=f"{round(min_temperatures.iloc[i]['Temperature (degC)'], 2)} C",
-                    delta=None, delta_color="normal", label_visibility="visible", border=True)
-                st.text(min_temperatures.iloc[i]['date'])
+        render_metrics(param, max_temperatures, f'All-Time High - {param}')
+        render_metrics(param, min_temperatures, f'All-Time Low - {param}')
+else:
+    '''
+    Upload your files and click **Process Files** to generate plots.
+    '''
