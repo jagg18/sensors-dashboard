@@ -110,24 +110,27 @@ def render_metrics(param, vals, header_string):
             st.text(vals.iloc[i]['date'])
 
 # Function to render a chart
-def render_chart(y_field, title, divider, date_range):
+def render_chart(data, label_x, label_y, legend, title, divider, date_range):
     st.header(title, divider=divider)
     interval = alt.selection_interval(encodings=['x'], value={'x': date_range})
-    selection = alt.selection_point(fields=['room'], bind='legend')
+    selection = alt.selection_point(fields=[legend], bind='legend')
     highlight = alt.selection_point(
-        on="pointerover", fields=['date'], nearest=True, clear="pointerout"
+        on="pointerover", fields=[label_x], nearest=True, clear="pointerout"
     )
 
-    base = alt.Chart(df_non_null, width=600, height=200).mark_line().encode(
-        x='date:T',
-        y=f'{y_field}:Q',
-        color='room',
+    base = alt.Chart(data).mark_line().encode(
+        x=f'{label_x}:T',
+        y=alt.Y(f'{label_y}:Q'),
+        color=f'{legend}:N',
         opacity=alt.condition(selection, alt.value(1), alt.value(0.2)),
+    ).properties(
+        width=600,
+        height=200
     ).add_params(selection)
 
     upper = base.encode(
-        alt.X('date:T').scale(domain=interval),
-        alt.Y(f'{y_field}:Q').scale(zero=False),
+        alt.X(f'{label_x}:T').scale(domain=interval),
+        alt.Y(f'{label_y}:Q').scale(zero=False),
     )
 
     circle = upper.mark_circle().encode(
@@ -135,7 +138,7 @@ def render_chart(y_field, title, divider, date_range):
     ).add_params(highlight)
 
     view = base.encode(
-        alt.Y(f'{y_field}:Q').scale(zero=False),
+        alt.Y(f'{label_y}:Q').scale(zero=False),
     ).properties(height=60).add_params(interval)
 
     st.altair_chart((upper + circle) & view, use_container_width=True)
@@ -184,7 +187,14 @@ if not sensor_df.empty:
         # Remove rows with null values
         df_non_null = filtered_sensor_df.dropna(subset=[param])
 
-        render_chart(param, f"{param} over time", divider="gray", date_range=date_range)
+        # Rename columns to avoid using special characters in Altair charts
+        # CONSTANTS
+        LABEL_X = 'date'
+        LABEL_Y = 'value'
+        LABEL_LEGEND = 'room'
+        chart_data = df_non_null[[LABEL_X, LABEL_LEGEND, param]].rename(columns={LABEL_X: LABEL_X, LABEL_LEGEND: LABEL_LEGEND, param: LABEL_Y})
+
+        render_chart(chart_data, label_x=LABEL_X, label_y=LABEL_Y, legend=LABEL_LEGEND, title=f"{param} over time", divider="gray", date_range=date_range)
 
         # Metrics
 
