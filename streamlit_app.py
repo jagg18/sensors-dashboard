@@ -52,6 +52,9 @@ def process_uploaded_files(file_room_pairs):
                 df = df.groupby(['room', pd.Grouper(key='date', freq='1D')]).mean().reset_index()
                 df['date'] = df['date'].map(lambda x: x.date())
 
+                # Round values up to 4 decimal places
+                df = df.round(4)
+
                 combined_data.append(df)
             except Exception as e:
                 st.error(f"Error processing {file_name}: {e}")
