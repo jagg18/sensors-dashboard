@@ -4,14 +4,17 @@ import datetime as dt
 import math
 from pathlib import Path
 import re
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 import altair as alt
 
 # Set the page configuration
-st.set_page_config(page_title='Sensor Dashboard', page_icon=':robot:')
+st.set_page_config(page_title='Air Quality Sensor Dashboard', page_icon=':robot:')
+# pd.options.display.float_format = '{:,.0f}'.format
 
 '''
-# :robot_face: Sensor Dashboard
+# :robot_face: Air Quality Sensor Dashboard
 '''
 
 # Initialize session state for uploaded files and processed data
@@ -50,7 +53,6 @@ def process_uploaded_files(file_room_pairs):
                 df.insert(1, 'room', room_name)
 
                 df = df.groupby(['room', pd.Grouper(key='date', freq='1D')]).mean().reset_index()
-                df['date'] = df['date'].map(lambda x: x.date())
 
                 # Round values up to 4 decimal places
                 df = df.round(4)
@@ -110,9 +112,9 @@ def render_metrics(param, vals, header_string):
                 label=vals.iloc[i]['room'],
                 value=f"{round(vals.iloc[i][param], 2)}",
                 delta=None, delta_color="normal", label_visibility="visible", border=True)
-            st.text(vals.iloc[i]['date'])
+            st.text(vals.iloc[i]['date'].date())
 
-# Function to render a chart
+# Line Charts
 def render_chart(data, label_x, label_y, legend, title, divider, date_range):
     st.header(title, divider=divider)
     interval = alt.selection_interval(encodings=['x'], value={'x': date_range})
@@ -146,19 +148,72 @@ def render_chart(data, label_x, label_y, legend, title, divider, date_range):
 
     st.altair_chart((upper + circle) & view, use_container_width=True)
 
+# Define seasons and adjust year for Winter
+def get_season_and_adjusted_year(date):
+    month = date.month
+    year = date.year
+    if month == 12:  # December belongs to the next year's Winter
+        return 'Winter', year + 1
+    elif month in [1, 2]:
+        return 'Winter', year
+    elif month in [3, 4, 5]:
+        return 'Spring', year
+    elif month in [6, 7, 8]:
+        return 'Summer', year
+    elif month in [9, 10, 11]:
+        return 'Fall', year
+
+def render_seasonal_data(data, param_name):
+    data[['season', 'adjusted_year']] = data['date'].apply(
+        get_season_and_adjusted_year
+    ).apply(pd.Series)
+
+    # Group by adjusted_year and season to calculate the mean
+    grouped = chart_data.groupby(['adjusted_year', 'season']).agg(
+        avg_param=(LABEL_Y, 'mean')
+    ).reset_index()
+
+    bar_chart = alt.Chart(grouped).mark_bar(size=40).encode(
+        x=alt.X(
+            'season:N', 
+            sort=['Winter', 'Spring', 'Summer', 'Fall'],
+            title='Season'
+        ),
+        y=alt.Y(
+            'avg_param:Q', 
+            title=f'Average {param_name}'
+        ),
+        color='season:N',
+        tooltip=[
+            alt.Tooltip('season:N', title='Season'),
+            alt.Tooltip('adjusted_year:N', title='Year'),
+            alt.Tooltip('avg_param:Q', title=f'Average {param_name}')
+        ],
+        facet=alt.Facet(
+            'adjusted_year:N', 
+            title='Year',
+            columns=1
+        )
+    ).properties(
+        title=f'Average {param_name} by Season and Year',
+        width=500,
+        height=200
+    )
+
+    st.altair_chart(bar_chart, use_container_width=False)
+
 if not sensor_df.empty:
     # st.dataframe(sensor_df)
 
-    min_date = sensor_df['date'].min()
-    max_date = sensor_df['date'].max()
+    min_max_date = (sensor_df['date'].min(), sensor_df['date'].max())
 
     # Date slider
     with st.sidebar:
         min_date, max_date = st.slider(
             'Select Date Range',
-            min_value=min_date,
-            max_value=max_date,
-            value=(min_date, max_date)
+            min_value=min_max_date[0].date(),
+            max_value=min_max_date[1].date(),
+            value=(min_max_date[0].date(), min_max_date[1].date())
         )
 
     # Room selection
@@ -168,9 +223,9 @@ if not sensor_df.empty:
 
     # Filter data based on selections
     filtered_sensor_df = sensor_df[
-        (sensor_df['room'].isin(selected_rooms)) &
-        (sensor_df['date'] >= min_date) &
-        (sensor_df['date'] <= max_date)
+        (sensor_df['room'].isin(selected_rooms))
+        & (sensor_df['date'].dt.date >= min_date)
+        & (sensor_df['date'].dt.date <= max_date)
     ]
 
     # Interval Default Range
@@ -199,13 +254,18 @@ if not sensor_df.empty:
 
         render_chart(chart_data, label_x=LABEL_X, label_y=LABEL_Y, legend=LABEL_LEGEND, title=f"{param} over time", divider="gray", date_range=date_range)
 
-        # Metrics
+        # All-Time Metrics
 
-        max_temperatures = df_non_null.groupby('room').apply(lambda df: get_max_param(df, param))
-        min_temperatures = df_non_null.groupby('room').apply(lambda df: get_min_param(df, param))
+        max_params = chart_data.groupby('room').apply(lambda df: get_max_param(df, LABEL_Y))
+        min_params = chart_data.groupby('room').apply(lambda df: get_min_param(df, LABEL_Y))
 
-        render_metrics(param, max_temperatures, f'All-Time High - {param}')
-        render_metrics(param, min_temperatures, f'All-Time Low - {param}')
+        render_metrics(LABEL_Y, max_params, f'All-Time High - {param}')
+        render_metrics(LABEL_Y, min_params, f'All-Time Low - {param}')
+
+        # Seasonal Metrics
+
+        render_seasonal_data(chart_data, param)
+
 else:
     '''
     Upload your files and click **Process Files** to generate plots.
