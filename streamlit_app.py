@@ -7,7 +7,6 @@ import altair as alt
 
 # Set the page configuration
 st.set_page_config(page_title='Air Quality Sensor Dashboard', page_icon=':robot:')
-# pd.options.display.float_format = '{:,.0f}'.format
 
 '''
 # :robot_face: Air Quality Sensor Dashboard
@@ -49,9 +48,6 @@ def process_uploaded_files(file_room_pairs):
                 df.insert(1, 'room', room_name)
 
                 df = df.groupby(['room', pd.Grouper(key='date', freq='1D')]).mean().reset_index()
-
-                # Round values up to 4 decimal places
-                df = df.round(4)
 
                 combined_data.append(df)
             except Exception as e:
@@ -99,14 +95,14 @@ def get_max_param(group, param):
 def get_min_param(group, param):
     return group.loc[group[param].idxmin()]
 
-def render_metrics(param, vals, header_string):
+def render_metrics(param, vals, header_string, decimal_places):
     st.header(header_string, divider='gray')
     cols = st.columns(len(vals))
     for i, col in enumerate(cols):
         with col:
             st.metric(
                 label=vals.iloc[i]['room'],
-                value=f"{round(vals.iloc[i][param], 2)}",
+                value = f"{vals.iloc[i][param]:.{decimal_places}f}",
                 delta=None, delta_color="normal", label_visibility="visible", border=True)
             st.text(vals.iloc[i]['date'].date())
 
@@ -169,6 +165,9 @@ def render_seasonal_data(data, param_name):
         avg_param=(LABEL_Y, 'mean')
     ).reset_index()
 
+    # Round the avg_param column
+    grouped['avg_param'] = grouped['avg_param'].round(get_decimal_places(data_decimal_places, param_name))
+
     bar_chart = alt.Chart(grouped).mark_bar(size=40).encode(
         x=alt.X(
             'season:N', 
@@ -197,6 +196,31 @@ def render_seasonal_data(data, param_name):
     )
 
     st.altair_chart(bar_chart, use_container_width=False)
+
+def get_decimal_places(data_decimal_places, col_name):
+    """
+    Returns the format string for a given column name based on decimal places.
+
+    Parameters:
+        data_decimal_places (dict): A dictionary with column name keys and decimal places as values.
+        col_name (str): The name of the column to check.
+
+    Returns:
+        str: The format string for the column, or None if the column doesn't match.
+    """
+    for key, decimal_places in data_decimal_places.items():
+        if col_name.lower().startswith(key):
+            return decimal_places
+    return 4
+
+data_decimal_places = {
+    "temperature": 1,
+    "humidity": 0,
+    "voc": 1,
+    "co2": 0,
+    "pm": 0,
+    "mass concentration": 1,
+}
 
 if not sensor_df.empty:
     # st.dataframe(sensor_df)
@@ -248,15 +272,20 @@ if not sensor_df.empty:
         LABEL_LEGEND = 'room'
         chart_data = df_non_null[[LABEL_X, LABEL_LEGEND, param]].rename(columns={LABEL_X: LABEL_X, LABEL_LEGEND: LABEL_LEGEND, param: LABEL_Y})
 
+        # Round off the data values
+        chart_data[LABEL_Y] = chart_data[LABEL_Y].round(get_decimal_places(data_decimal_places, param))
+        
         render_chart(chart_data, label_x=LABEL_X, label_y=LABEL_Y, legend=LABEL_LEGEND, title=f"{param} over time", divider="gray", date_range=date_range)
 
         # All-Time Metrics
 
         max_params = chart_data.groupby('room').apply(lambda df: get_max_param(df, LABEL_Y))
+        # max_params[LABEL_Y] = max_params[LABEL_Y].astype(str)
         min_params = chart_data.groupby('room').apply(lambda df: get_min_param(df, LABEL_Y))
+        # min_params[LABEL_Y] = max_params[LABEL_Y].astype(str)
 
-        render_metrics(LABEL_Y, max_params, f'All-Time High - {param}')
-        render_metrics(LABEL_Y, min_params, f'All-Time Low - {param}')
+        render_metrics(LABEL_Y, max_params, f'All-Time High - {param}', get_decimal_places(data_decimal_places, param))
+        render_metrics(LABEL_Y, min_params, f'All-Time Low - {param}', get_decimal_places(data_decimal_places, param))
 
         # Seasonal Metrics
 
