@@ -42,7 +42,7 @@ def process_uploaded_files(file_room_pairs):
                 df.rename(columns={df.columns[0]: 'date'}, inplace=True)
 
                 # Convert the 'date' column to datetime
-                df['date'] = pd.to_datetime(df['date'])
+                df['date'] = pd.to_datetime(df['date'], format='mixed')
 
                 # Insert 'room' as the second column
                 df.insert(1, 'room', room_name)
